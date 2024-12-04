@@ -5,7 +5,6 @@ public class GenRays : MonoBehaviour
     [Min(1)] public int pixelHeight = 7;
     [Min(1)] public int pixelWidth = 9;
     public float sphereScale = 0.1f;
-    public bool ShaderOn = false;
 
     private Ray[] Rays;
     private GameObject[] Spheres;

@@ -1,0 +1,32 @@
+#pragma kernel CSMain
+
+RWTexture2D<float4> Result;
+
+float3 ViewParams;                // View parameters for scaling
+float4x4 CamLocalToWorldMatrix;   // Camera transformation matrix
+float3 WorldSpaceCameraPos;       // Camera position in world space
+float Resolution;                 // Texture Resolution
+struct Ray {
+    float3 start;
+    float3 dir;
+};
+
+[numthreads(8, 8, 1)]
+void CSMain(uint3 id : SV_DispatchThreadID)
+{
+    float2 uv = (float2(id.xy) + 0.5) / Resolution;
+
+    // Calculate the local view point
+    float3 viewPointLocal = float3(uv * 2.0 - 1.0, 1.0) * ViewParams;
+
+    // Transform local view point to world space
+    float3 viewPoint = mul(CamLocalToWorldMatrix, float4(viewPointLocal, 1.0)).xyz;
+
+    // Initialize the ray's start and direction
+    Ray ray;
+    ray.start = WorldSpaceCameraPos;
+    ray.dir = normalize(viewPoint - ray.start);
+
+    // Store view parameters as a color output (adjust based on needs)
+    Result[id.xy] = float4(ray.dir, 1.0);
+}

@@ -225,11 +225,12 @@ MonoBehaviour:
   m_GameObject: {fileID: 692338544}
   m_Enabled: 1
   m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: f3debbce030c0584d9becff9756b0b17, type: 3}
+  m_Script: {fileID: 11500000, guid: 7b9228d4ae7cdff488f5d290088e88c6, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  sphereHeight: 16
-  sphereScale: 0.1
+  useShaderInSceneView: 1
+  computeShader: {fileID: 7200000, guid: cf1dc60af8ddf554ab4780b1dfb74153, type: 3}
+  renderTexture: {fileID: 0}
 --- !u!1 &1233260570
 GameObject:
   m_ObjectHideFlags: 0
