@@ -14,15 +14,25 @@ public class RayTracingManager : MonoBehaviour
     [Header("View Settings")]
     [SerializeField] bool useShaderInSceneView;
     [Header("Refrences")]
-    [SerializeField] Shader currShader;
+    [SerializeField] Shader rayTracingShader;
+    [SerializeField] Shader accumulateShader;
     // [SerializeField] ComputeShader currShader;
+
+    [Header("Info")]
+    [SerializeField] int numRenderedFrames;
 
     // Materials and renderTextures
     Material rayTraceMaterial;
+    Material accumulateMaterial;
     RenderTexture resultTexture;
 
     // Buffers
     ComputeBuffer sphereBuffer;
+
+    void Start()
+    {
+        numRenderedFrames = 0;
+    }
 
     void OnRenderImage(RenderTexture src, RenderTexture dest)
     {
@@ -42,7 +52,31 @@ public class RayTracingManager : MonoBehaviour
         }
         else
         {
-            Graphics.Blit(src, dest);
+
+            InitFrame();
+
+            // Create a copy of prev frame
+            RenderTexture prevFrame = RenderTexture.GetTemporary(src.width, src.height, 0, GraphicsFormat.R32G32B32A32_SFloat);
+            Graphics.Blit(resultTexture, prevFrame);
+
+            // Run raytracer and draw to temp texture
+            rayTraceMaterial.SetInt("FrameCount", numRenderedFrames);
+            RenderTexture currFrame = RenderTexture.GetTemporary(src.width, src.height, 0, GraphicsFormat.R32G32B32A32_SFloat);
+            Graphics.Blit(null, currFrame, rayTraceMaterial);
+
+            // Accumulate
+            accumulateMaterial.SetInt("_Frame", numRenderedFrames);
+            accumulateMaterial.SetTexture("_PrevFrame", prevFrame);
+            Graphics.Blit(currFrame, resultTexture, accumulateMaterial);
+
+            // Draw to screen
+            Graphics.Blit(resultTexture, dest);
+
+            // Release temps
+            RenderTexture.ReleaseTemporary(prevFrame);
+            RenderTexture.ReleaseTemporary(currFrame);
+
+            numRenderedFrames += Application.isPlaying ? 1 : 0;
         }
     }
 
@@ -54,14 +88,16 @@ public class RayTracingManager : MonoBehaviour
 
     void InitFrame()
     {
-        InitMaterial(currShader, ref rayTraceMaterial);
-        if (resultTexture == null || !resultTexture.IsCreated() || resultTexture.width != Screen.width || resultTexture.height != Screen.height || resultTexture.graphicsFormat != (UnityEngine.Experimental.Rendering.GraphicsFormat)FilterMode.Bilinear)
+        InitMaterial(rayTracingShader, ref rayTraceMaterial);
+        InitMaterial(accumulateShader, ref accumulateMaterial);
+
+        if (resultTexture == null || !resultTexture.IsCreated() || resultTexture.width != Screen.width || resultTexture.height != Screen.height || resultTexture.graphicsFormat != GraphicsFormat.R32G32B32A32_SFloat)
         {
             if (resultTexture != null)
             {
                 resultTexture.Release();
             }
-            resultTexture = CreateRenderTexture(Screen.width, Screen.height, FilterMode.Bilinear, GraphicsFormat.R32G32B32A32_SFloat, "Unnamed", 0, false);
+            resultTexture = CreateRenderTexture(Screen.width, Screen.height, FilterMode.Bilinear, GraphicsFormat.R32G32B32A32_SFloat, "Result", 0, false);
         }
         else
         {
@@ -71,7 +107,6 @@ public class RayTracingManager : MonoBehaviour
         }
 
         UpdateShaderParms();
-        UpdateEnviornmentParms();
         UpdateCameraParms(Camera.current);
         CreateSpheres();
     }
@@ -131,6 +166,7 @@ public class RayTracingManager : MonoBehaviour
         rayTraceMaterial.SetInt("FrameCount", Time.frameCount);
         rayTraceMaterial.SetInt("MaxBounceCount", MaxBounceCount);
         rayTraceMaterial.SetInt("NumRaysPerPixel", NumRaysPerPixel);
+        UpdateEnviornmentParms();
     }
 
     void CreateSpheres()

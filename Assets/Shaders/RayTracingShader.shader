@@ -1,4 +1,4 @@
-Shader "Custom/RayTracingShader"
+Shader "RayTracingShader"
 {
     SubShader
     {

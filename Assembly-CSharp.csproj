@@ -71,6 +71,7 @@
     <Compile Include="Assets\DataTypes\RayTracingMaterial.cs" />
   </ItemGroup>
   <ItemGroup>
+    <None Include="Assets\Shaders\Accumulate.shader" />
     <None Include="Assets\Shaders\RayTracingShader.shader" />
   </ItemGroup>
   <ItemGroup>
