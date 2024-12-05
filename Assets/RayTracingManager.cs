@@ -9,22 +9,30 @@ public class RayTracingManager : MonoBehaviour
     [Header("Ray Tracing Settings")]
     [SerializeField, Range(0, 32)] int MaxBounceCount = 1;
     [SerializeField, Range(0, 64)] int NumRaysPerPixel = 1;
+    [SerializeField] float DefocusStrength = 0;
+    [SerializeField] float DivergeStrength = 0;
+    [SerializeField] float FocusDistance = 0;
+
     [SerializeField] EnviornmentSettings enviornmentSettings;
+    [SerializeField] bool Accumulate;
+
 
     [Header("View Settings")]
     [SerializeField] bool useShaderInSceneView;
     [Header("Refrences")]
     [SerializeField] Shader rayTracingShader;
     [SerializeField] Shader accumulateShader;
-    // [SerializeField] ComputeShader currShader;
+
 
     [Header("Info")]
     [SerializeField] int numRenderedFrames;
+
 
     // Materials and renderTextures
     Material rayTraceMaterial;
     Material accumulateMaterial;
     RenderTexture resultTexture;
+
 
     // Buffers
     ComputeBuffer sphereBuffer;
@@ -54,27 +62,34 @@ public class RayTracingManager : MonoBehaviour
         {
 
             InitFrame();
+            if (Accumulate)
+            {
+                // Create a copy of prev frame
+                RenderTexture prevFrame = RenderTexture.GetTemporary(src.width, src.height, 0, GraphicsFormat.R32G32B32A32_SFloat);
+                Graphics.Blit(resultTexture, prevFrame);
 
-            // Create a copy of prev frame
-            RenderTexture prevFrame = RenderTexture.GetTemporary(src.width, src.height, 0, GraphicsFormat.R32G32B32A32_SFloat);
-            Graphics.Blit(resultTexture, prevFrame);
+                // Run raytracer and draw to temp texture
+                rayTraceMaterial.SetInt("FrameCount", numRenderedFrames);
+                RenderTexture currFrame = RenderTexture.GetTemporary(src.width, src.height, 0, GraphicsFormat.R32G32B32A32_SFloat);
+                Graphics.Blit(null, currFrame, rayTraceMaterial);
 
-            // Run raytracer and draw to temp texture
-            rayTraceMaterial.SetInt("FrameCount", numRenderedFrames);
-            RenderTexture currFrame = RenderTexture.GetTemporary(src.width, src.height, 0, GraphicsFormat.R32G32B32A32_SFloat);
-            Graphics.Blit(null, currFrame, rayTraceMaterial);
+                // Accumulate
+                accumulateMaterial.SetInt("_Frame", numRenderedFrames);
+                accumulateMaterial.SetTexture("_PrevFrame", prevFrame);
+                Graphics.Blit(currFrame, resultTexture, accumulateMaterial);
 
-            // Accumulate
-            accumulateMaterial.SetInt("_Frame", numRenderedFrames);
-            accumulateMaterial.SetTexture("_PrevFrame", prevFrame);
-            Graphics.Blit(currFrame, resultTexture, accumulateMaterial);
+                // Draw to screen
+                Graphics.Blit(resultTexture, dest);
 
-            // Draw to screen
-            Graphics.Blit(resultTexture, dest);
+                // Release temps
+                RenderTexture.ReleaseTemporary(prevFrame);
+                RenderTexture.ReleaseTemporary(currFrame);
+            }
+            else
+            {
+                Graphics.Blit(null, dest, rayTraceMaterial);
+            }
 
-            // Release temps
-            RenderTexture.ReleaseTemporary(prevFrame);
-            RenderTexture.ReleaseTemporary(currFrame);
 
             numRenderedFrames += Application.isPlaying ? 1 : 0;
         }
@@ -152,13 +167,11 @@ public class RayTracingManager : MonoBehaviour
 
     void UpdateCameraParms(Camera cam)
     {
-        float planeHeight = 2.0f * cam.nearClipPlane * Tan(cam.fieldOfView * 0.5f * Deg2Rad);
+        float planeHeight = FocusDistance * Tan(cam.fieldOfView * 0.5f * Deg2Rad) * 2;
         float planeWidth = planeHeight * cam.aspect;
 
-        rayTraceMaterial.SetVector("ViewParams", new Vector3(planeWidth, planeHeight, cam.nearClipPlane));
+        rayTraceMaterial.SetVector("ViewParams", new Vector3(planeWidth, planeHeight, FocusDistance));
         rayTraceMaterial.SetMatrix("CamLocalToWorldMatrix", cam.transform.localToWorldMatrix);
-        rayTraceMaterial.SetVector("WorldSpaceCameraPos", cam.transform.position);
-        rayTraceMaterial.SetVector("Resolution", new Vector2(resultTexture.width, resultTexture.height));
     }
 
     void UpdateShaderParms()
@@ -166,6 +179,8 @@ public class RayTracingManager : MonoBehaviour
         rayTraceMaterial.SetInt("FrameCount", Time.frameCount);
         rayTraceMaterial.SetInt("MaxBounceCount", MaxBounceCount);
         rayTraceMaterial.SetInt("NumRaysPerPixel", NumRaysPerPixel);
+        rayTraceMaterial.SetFloat("DefocusStrength", DefocusStrength);
+        rayTraceMaterial.SetFloat("DivergeStrength", DivergeStrength);
         UpdateEnviornmentParms();
     }
 
