@@ -2,14 +2,67 @@
 
 RWTexture2D<float4> Result;
 
-float3 ViewParams;                // View parameters for scaling
-float4x4 CamLocalToWorldMatrix;   // Camera transformation matrix
-float3 WorldSpaceCameraPos;       // Camera position in world space
-float Resolution;                 // Texture Resolution
+float3 ViewParams;                  // View parameters for scaling
+float4x4 CamLocalToWorldMatrix;     // Camera transformation matrix
+float3 WorldSpaceCameraPos;         // Camera position in world space
+float Resolution;                   // Texture Resolution
+
+// Ray Struct
 struct Ray {
-    float3 start;
-    float3 dir;
+    float3 origin;                   // Start Location of Ray
+    float3 dir;                     // Direction of Ray
 };
+
+// Hit Info Struct
+struct HitInfo {
+    bool didHit;                    // Did the ray hit?
+    float dst;                      // distance the ray had to travel
+    float3 hitPoint;                // The point that the ray hit the object
+    float3 normal;                  // The normal of the object at that point
+};
+
+struct RayTracingMaterial
+{
+    float4 colour;
+};
+
+struct Sphere{
+    float3 position;
+    float radius;
+    RayTracingMaterial material;
+};
+
+HitInfo RaySphere(Ray ray, float3 sphereCenter, float sphereRadius){
+    HitInfo hitInfo = (HitInfo)0;
+    float3 offsetRayOrigin = ray.origin - sphereCenter;
+
+    float a = dot(ray.dir, ray.dir);
+    float b = 2.0f * dot(offsetRayOrigin, ray.dir);
+    float c = dot(offsetRayOrigin, offsetRayOrigin) - sphereRadius * sphereRadius;
+
+    float discriminant = b * b - 4.0f * a * c;
+
+    if (discriminant >= 0.0f) {
+        float sqrtDiscriminant = sqrt(discriminant);
+
+        float dst1 = (-b - sqrtDiscriminant) / (2.0f * a);
+        float dst2 = (-b + sqrtDiscriminant) / (2.0f * a);
+
+        float dst = dst1;
+        if (dst1 < 0.0f) {
+            dst = dst2;  // Use the second root if the first is behind the origin
+        }
+
+        if (dst >= 0.0f) {
+            hitInfo.didHit = true;
+            hitInfo.dst = dst;
+            hitInfo.hitPoint = ray.origin + ray.dir * dst;
+            hitInfo.normal = normalize(hitInfo.hitPoint - sphereCenter);
+        }
+    }
+
+    return hitInfo;
+}
 
 [numthreads(8, 8, 1)]
 void CSMain(uint3 id : SV_DispatchThreadID)
@@ -24,9 +77,9 @@ void CSMain(uint3 id : SV_DispatchThreadID)
 
     // Initialize the ray's start and direction
     Ray ray;
-    ray.start = WorldSpaceCameraPos;
-    ray.dir = normalize(viewPoint - ray.start);
+    ray.origin = WorldSpaceCameraPos;
+    ray.dir = normalize(viewPoint - ray.origin);
 
     // Store view parameters as a color output (adjust based on needs)
-    Result[id.xy] = float4(ray.dir, 1.0);
+    Result[id.xy] = float4(RaySphere(ray, 0, 1).didHit, 0.0, 0.0, 0.0);
 }
