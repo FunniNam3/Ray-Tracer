@@ -200,10 +200,17 @@ public class RayTracingManager : MonoBehaviour
         rayTraceMaterial.SetInt("NumSpheres", spheres.Length);
     }
 
-    void OnDestroy()
+    void OnDisable()
     {
-        if (resultTexture != null) resultTexture.Release();
-        if (sphereBuffer != null) sphereBuffer.Release();
+        resultTexture.Release();
+        sphereBuffer.Release();
     }
 
+    void OnValidate()
+    {
+        MaxBounceCount = Max(0, MaxBounceCount);
+        NumRaysPerPixel = Max(1, NumRaysPerPixel);
+        enviornmentSettings.SunFocus = Max(1, enviornmentSettings.SunFocus);
+        enviornmentSettings.SunIntensity = Max(0, enviornmentSettings.SunIntensity);
+    }
 }

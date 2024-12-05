@@ -65,6 +65,8 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="Assets\DataTypes\Sphere.cs" />
+    <Compile Include="Assets\DataTypes\Triangle.cs" />
+    <Compile Include="Assets\DataTypes\Vertex.cs" />
     <Compile Include="Assets\RayTracingManager.cs" />
     <Compile Include="Assets\RayTracingTypes\RayTracedSphere.cs" />
     <Compile Include="Assets\DataTypes\EnviornmentSettings.cs" />
