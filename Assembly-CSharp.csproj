@@ -67,11 +67,12 @@
     <Compile Include="Assets\DataTypes\Sphere.cs" />
     <Compile Include="Assets\Scripts\GenRays.cs" />
     <Compile Include="Assets\RayTracingTypes\RayTracedSphere.cs" />
+    <Compile Include="Assets\DataTypes\EnviornmentSettings.cs" />
     <Compile Include="Assets\DataTypes\RayTracingMaterial.cs" />
     <Compile Include="Assets\Scripts\RayTracingManager.cs" />
   </ItemGroup>
   <ItemGroup>
-    <None Include="Assets\RayTracingShader.compute" />
+    <None Include="Assets\Shaders\RayTracingShader.compute" />
   </ItemGroup>
   <ItemGroup>
     <Reference Include="UnityEngine">
