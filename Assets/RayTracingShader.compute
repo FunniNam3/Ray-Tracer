@@ -5,55 +5,56 @@ RWTexture2D<float4> Result;
 float3 ViewParams;                  // View parameters for scaling
 float4x4 CamLocalToWorldMatrix;     // Camera transformation matrix
 float3 WorldSpaceCameraPos;         // Camera position in world space
-float Resolution;                   // Texture Resolution
+float2 Resolution;                  // Texture Resolution
+int FrameCount;                     // Current FrameCount
+int MaxBounceCount;                 // Max number of bounces per ray
 
 // Ray Struct
-struct Ray {
+struct Ray
+{
     float3 origin;                   // Start Location of Ray
     float3 dir;                     // Direction of Ray
 };
 
+struct RayTracingMaterial
+{
+    float4 color;
+    float4 emissionColor;
+    float emissionStrength;
+};
+
 // Hit Info Struct
-struct HitInfo {
+struct HitInfo
+{
     bool didHit;                    // Did the ray hit?
     float dst;                      // distance the ray had to travel
     float3 hitPoint;                // The point that the ray hit the object
     float3 normal;                  // The normal of the object at that point
-};
-
-struct RayTracingMaterial
-{
-    float4 colour;
-};
-
-struct Sphere{
-    float3 position;
-    float radius;
     RayTracingMaterial material;
 };
 
-HitInfo RaySphere(Ray ray, float3 sphereCenter, float sphereRadius){
+struct Sphere
+{
+    float3 position;                // Position of the sphere
+    float radius;                   // Radius of the sphere
+    RayTracingMaterial material;    // Spheres Material
+};
+
+HitInfo RaySphere(Ray ray, float3 sphereCenter, float sphereRadius)
+{
     HitInfo hitInfo = (HitInfo)0;
     float3 offsetRayOrigin = ray.origin - sphereCenter;
-
+    // Using equation sqrLength(rayOrgin + rayDir * dst) = radius^2
     float a = dot(ray.dir, ray.dir);
-    float b = 2.0f * dot(offsetRayOrigin, ray.dir);
-    float c = dot(offsetRayOrigin, offsetRayOrigin) - sphereRadius * sphereRadius;
+    float b = 2 * dot(offsetRayOrigin, ray.dir);
+    float c = dot(offsetRayOrigin, offsetRayOrigin) - (sphereRadius * sphereRadius);
 
-    float discriminant = b * b - 4.0f * a * c;
+    float discriminant = (b * b) - (4 * a * c);
 
-    if (discriminant >= 0.0f) {
-        float sqrtDiscriminant = sqrt(discriminant);
+    if (discriminant >= 0) {
+        float dst = -(b +  sqrt(discriminant)) / (2 * a);
 
-        float dst1 = (-b - sqrtDiscriminant) / (2.0f * a);
-        float dst2 = (-b + sqrtDiscriminant) / (2.0f * a);
-
-        float dst = dst1;
-        if (dst1 < 0.0f) {
-            dst = dst2;  // Use the second root if the first is behind the origin
-        }
-
-        if (dst >= 0.0f) {
+        if (dst >= 0) {
             hitInfo.didHit = true;
             hitInfo.dst = dst;
             hitInfo.hitPoint = ray.origin + ray.dir * dst;
@@ -64,22 +65,99 @@ HitInfo RaySphere(Ray ray, float3 sphereCenter, float sphereRadius){
     return hitInfo;
 }
 
+StructuredBuffer<Sphere> Spheres;
+int NumSpheres;
+
+HitInfo CalculateRayCollision(Ray ray)
+{
+    HitInfo closestHit = (HitInfo)0;
+    // Closest hit is infinitely far away till we hit something
+    closestHit.dst = 1.#INF;
+
+    for (int i = 0; i < NumSpheres; i++){
+        Sphere sphere = Spheres[i];
+        HitInfo hitInfo = RaySphere(ray, sphere.position, sphere.radius);
+
+        if(hitInfo.didHit && hitInfo.dst < closestHit.dst){
+            closestHit = hitInfo;
+            closestHit.material = sphere.material;
+        }
+    }
+
+    return closestHit;
+}
+
+float RandomValue(inout uint state)
+{
+    state = state * 747796405 + 2891336453;
+	uint result = ((state >> ((state >> 28) + 4)) ^ state) * 277803737;
+	result = (result >> 22) ^ result;
+	return result / 4294967295.0;
+}
+
+float RandomValueNormalDist(inout uint state)
+{
+    float t = 2 * 3.14159263 * RandomValue(state);
+    float r = sqrt(-2 * log(RandomValue(state)));
+    return r * cos(t);
+}
+
+float3 RandomDirection(inout uint state)
+{
+    float x = RandomValueNormalDist(state);
+    float y = RandomValueNormalDist(state);
+    float z = RandomValueNormalDist(state);
+    return normalize(float3(x,y,z));
+}
+
+float3 RandomHemiDir(float3 normal, inout uint rngState)
+{
+    float3 dir = RandomDirection(rngState);
+    return dir * sign(dot(normal, dir));
+}
+
+float3 Trace(Ray ray, inout uint rngState)
+{
+    float3 incomingLight = 0;
+    float3 rayColor = 1;
+    for(int i = 0; i <= MaxBounceCount; i++)
+    {
+        HitInfo hitInfo = CalculateRayCollision(ray);
+        if(hitInfo.didHit)
+        {
+            ray.origin = hitInfo.hitPoint;
+            ray.dir = RandomHemiDir(hitInfo.normal, rngState);
+            RayTracingMaterial material = hitInfo.material;
+            float3 emittedLight = material.emissionColor * material.emissionStrength;
+            incomingLight += emittedLight * rayColor;
+            rayColor *= material.color;
+        }
+        else
+        {
+            break;
+        }
+    }
+
+    return incomingLight;
+}
+
 [numthreads(8, 8, 1)]
 void CSMain(uint3 id : SV_DispatchThreadID)
 {
-    float2 uv = (float2(id.xy) + 0.5) / Resolution;
+    uint2 pixelCoord = id.xy;
+    uint pixelIndex = pixelCoord.y * Resolution.x + pixelCoord.x;
+    uint rngState = pixelIndex + FrameCount * 719393;
+    
+    // Create Ray
+    float2 uv = float2(id.xy) / Resolution;
+    float3 viewPointLocal = float3(uv - 0.5, 1) * ViewParams;
+    float3 viewPoint = mul(CamLocalToWorldMatrix, float4(viewPointLocal, 1)).xyz;
 
-    // Calculate the local view point
-    float3 viewPointLocal = float3(uv * 2.0 - 1.0, 1.0) * ViewParams;
-
-    // Transform local view point to world space
-    float3 viewPoint = mul(CamLocalToWorldMatrix, float4(viewPointLocal, 1.0)).xyz;
-
-    // Initialize the ray's start and direction
     Ray ray;
     ray.origin = WorldSpaceCameraPos;
-    ray.dir = normalize(viewPoint - ray.origin);
+    ray.dir = normalize(viewPoint - WorldSpaceCameraPos);
 
     // Store view parameters as a color output (adjust based on needs)
-    Result[id.xy] = float4(RaySphere(ray, 0, 1).didHit, 0.0, 0.0, 0.0);
+    float3 pixelCol = Trace(ray,rngState);
+    Result[id.xy] = float4(pixelCol, 1);
 }

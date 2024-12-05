@@ -64,7 +64,10 @@
     <Analyzer Include="C:\Program Files\Unity\Hub\Editor\2022.3.4f1\Editor\Data\Tools\Unity.SourceGenerators\Unity.Properties.SourceGenerator.dll" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="Assets\DataTypes\Sphere.cs" />
     <Compile Include="Assets\Scripts\GenRays.cs" />
+    <Compile Include="Assets\RayTracingTypes\RayTracedSphere.cs" />
+    <Compile Include="Assets\DataTypes\RayTracingMaterial.cs" />
     <Compile Include="Assets\Scripts\RayTracingManager.cs" />
   </ItemGroup>
   <ItemGroup>
