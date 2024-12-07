@@ -1,4 +1,6 @@
+using System;
 using System.Collections.Generic;
+using Unity.VisualScripting;
 using UnityEngine;
 using UnityEngine.Experimental.Rendering;
 using static UnityEngine.Mathf;
@@ -6,6 +8,9 @@ using static UnityEngine.Mathf;
 [ExecuteAlways, ImageEffectAllowedInSceneView]
 public class RayTracingManager : MonoBehaviour
 {
+    // Super slow so please limit triangles
+    public const int TriLimit = 2000;
+
     [Header("Ray Tracing Settings")]
     [SerializeField, Range(0, 32)] int MaxBounceCount = 1;
     [SerializeField, Range(0, 64)] int NumRaysPerPixel = 1;
@@ -26,6 +31,8 @@ public class RayTracingManager : MonoBehaviour
 
     [Header("Info")]
     [SerializeField] int numRenderedFrames;
+    [SerializeField] int numMeshChunks;
+    [SerializeField] int numTriangles;
 
 
     // Materials and renderTextures
@@ -36,6 +43,11 @@ public class RayTracingManager : MonoBehaviour
 
     // Buffers
     ComputeBuffer sphereBuffer;
+    ComputeBuffer triangleBuffer;
+    ComputeBuffer meshInfoBuffer;
+
+    List<Triangle> allTriangles;
+    List<MeshInfo> allMeshInfo;
 
     void Start()
     {
@@ -116,7 +128,7 @@ public class RayTracingManager : MonoBehaviour
         }
         else
         {
-            resultTexture.name = "UnNamed";
+            resultTexture.name = "Unnamed";
             resultTexture.wrapMode = TextureWrapMode.Clamp;
             resultTexture.filterMode = FilterMode.Bilinear;
         }
@@ -124,6 +136,7 @@ public class RayTracingManager : MonoBehaviour
         UpdateShaderParms();
         UpdateCameraParms(Camera.current);
         CreateSpheres();
+        CreateMeshes();
     }
 
     RenderTexture CreateRenderTexture(int width, int height, FilterMode filterMode, GraphicsFormat format, string name = "Unnamed", int depthMode = 0, bool useMipMaps = false)
@@ -184,6 +197,50 @@ public class RayTracingManager : MonoBehaviour
         UpdateEnviornmentParms();
     }
 
+    void CreateMeshes()
+    {
+        RayTracedMesh[] meshObjects = FindObjectsOfType<RayTracedMesh>();
+
+
+
+        allTriangles ??= new List<Triangle>();
+        allMeshInfo ??= new List<MeshInfo>();
+        allTriangles.Clear();
+        allMeshInfo.Clear();
+
+        for (int i = 0; i < meshObjects.Length; i++)
+        {
+            MeshChunk[] chunks = meshObjects[i].GetSubMeshes();
+            foreach (MeshChunk chunk in chunks)
+            {
+                RayTracingMaterial material = meshObjects[i].GetMaterial(chunk.subMeshIndex);
+                allMeshInfo.Add(new MeshInfo(allTriangles.Count, chunk.triangles.Length, material, chunk.bounds));
+                allTriangles.AddRange(chunk.triangles);
+            }
+        }
+
+        numMeshChunks = allMeshInfo.Count;
+        numTriangles = allTriangles.Count;
+
+        if (allMeshInfo.Count != 0 && allTriangles.Count != 0)
+        {
+            int triLen = System.Runtime.InteropServices.Marshal.SizeOf(typeof(Triangle));
+            if (triangleBuffer != null) triangleBuffer.Release();
+            triangleBuffer = new ComputeBuffer(allTriangles.Count, triLen);
+            triangleBuffer.SetData(allTriangles);
+
+            int meshInfoLen = System.Runtime.InteropServices.Marshal.SizeOf(typeof(MeshInfo));
+            meshInfoBuffer?.Release();
+
+            meshInfoBuffer = new ComputeBuffer(allMeshInfo.Count, meshInfoLen);
+            meshInfoBuffer.SetData(allMeshInfo);
+        }
+
+        rayTraceMaterial.SetBuffer("Triangles", triangleBuffer);
+        rayTraceMaterial.SetBuffer("AllMeshInfo", meshInfoBuffer);
+        rayTraceMaterial.SetInt("NumMeshes", allMeshInfo.Count);
+    }
+
     void CreateSpheres()
     {
         RayTracedSphere[] sphereObjects = FindObjectsOfType<RayTracedSphere>();
@@ -219,6 +276,8 @@ public class RayTracingManager : MonoBehaviour
     {
         resultTexture.Release();
         sphereBuffer.Release();
+        triangleBuffer.Release();
+        meshInfoBuffer.Release();
     }
 
     void OnValidate()

@@ -1,6 +1,5 @@
 using UnityEngine;
 
-[System.Serializable]
 public struct Triangle
 {
     public Vector3 posA;
