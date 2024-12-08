@@ -50,7 +50,6 @@ public class RayTracingManager : MonoBehaviour
     public Material accumulateMaterial;
     public RenderTexture resultTexture;
 
-
     // Buffers
     ComputeBuffer triangleBuffer;
     ComputeBuffer nodeBuffer;
@@ -59,7 +58,6 @@ public class RayTracingManager : MonoBehaviour
     MeshInfo[] meshInfo;
     Model[] models;
     public bool hasBVH;
-    LocalKeyword debugVisShaderKeyword;
 
     void OnEnable()
     {
@@ -85,12 +83,6 @@ public class RayTracingManager : MonoBehaviour
 
     void OnRenderImage(RenderTexture src, RenderTexture dest)
     {
-        // if (!Application.isPlaying)
-        // {
-        //     Graphics.Blit(src, dest); // Draw the unaltered camera render to the screen
-        //     return;
-        // }
-
         bool isSceneCam = Camera.current.name == "SceneCamera";
         // Debug.Log("Rendering... isscenecam = " + isSceneCam + "  " + Camera.current.name);
         if (isSceneCam)
@@ -114,32 +106,33 @@ public class RayTracingManager : MonoBehaviour
 
                 if (Accumulate && visMode == VisMode.Default)
                 {
-                    // Create copy of prev frame
-                    RenderTexture prevFrameCopy = RenderTexture.GetTemporary(src.width, src.height, 0, GraphicsFormat.R32G32B32A32_SFloat);
-                    Graphics.Blit(resultTexture, prevFrameCopy);
+                    RenderTexture prevFrame = RenderTexture.GetTemporary(src.width, src.height, 0, GraphicsFormat.R32G32B32A32_SFloat);
+                    Graphics.Blit(resultTexture, prevFrame);
 
                     // Run the ray tracing shader and draw the result to a temp texture
-                    rayTraceMaterial.SetInt("Frame", numAccumFrames);
+                    rayTraceMaterial.SetInt("FrameCount", numAccumFrames);
                     RenderTexture currentFrame = RenderTexture.GetTemporary(src.width, src.height, 0, GraphicsFormat.R32G32B32A32_SFloat);
                     Graphics.Blit(null, currentFrame, rayTraceMaterial);
 
                     // Accumulate
                     accumulateMaterial.SetInt("_Frame", numAccumFrames);
-                    accumulateMaterial.SetTexture("_PrevFrame", prevFrameCopy);
+                    accumulateMaterial.SetTexture("_PrevFrame", prevFrame);
                     Graphics.Blit(currentFrame, resultTexture, accumulateMaterial);
+
 
                     // Draw result to screen
                     Graphics.Blit(resultTexture, dest);
 
                     // Release temps
-                    RenderTexture.ReleaseTemporary(prevFrameCopy);
                     RenderTexture.ReleaseTemporary(currentFrame);
+                    RenderTexture.ReleaseTemporary(prevFrame);
                     numAccumFrames += Application.isPlaying ? 1 : 0;
                 }
                 else
                 {
                     numAccumFrames = 0;
                     Graphics.Blit(null, dest, rayTraceMaterial);
+                    resultTexture.Release();
                 }
             }
             else
@@ -147,19 +140,18 @@ public class RayTracingManager : MonoBehaviour
                 Graphics.Blit(src, dest); // Draw the unaltered camera render to the screen
             }
         }
-        resultTexture.Release();
     }
 
     void InitFrame()
     {
         // Create materials used in blits
-        if (rayTraceMaterial == null || rayTraceMaterial.shader != rayTracingShader)
-        {
-            InitMaterial(rayTracingShader, ref rayTraceMaterial);
-            debugVisShaderKeyword = new LocalKeyword(rayTraceMaterial.shader, "DEBUG_VIS");
-        }
+        InitMaterial(rayTracingShader, ref rayTraceMaterial);
         InitMaterial(accumulateShader, ref accumulateMaterial);
-        resultTexture = CreateRenderTexture(Screen.width, Screen.height, FilterMode.Bilinear, GraphicsFormat.R32G32B32A32_SFloat, "Result");
+        if (resultTexture == null)
+        {
+            resultTexture = CreateRenderTexture(Screen.width, Screen.height, FilterMode.Bilinear, GraphicsFormat.R32G32B32A32_SFloat, "Result");
+            resultTexture.Create();
+        }
         models = FindObjectsByType<Model>(0);
         if (!hasBVH)
         {
@@ -215,7 +207,7 @@ public class RayTracingManager : MonoBehaviour
 
     RenderTexture CreateRenderTexture(int width, int height, FilterMode filterMode, GraphicsFormat format, string name = "Unnamed", int depthMode = 0, bool useMipMaps = false)
     {
-        RenderTexture texture = new RenderTexture(width, height, (int)depthMode);
+        RenderTexture texture = new RenderTexture(width, height, depthMode);
         texture.graphicsFormat = format;
         texture.enableRandomWrite = true;
         texture.autoGenerateMips = false;
@@ -243,9 +235,15 @@ public class RayTracingManager : MonoBehaviour
 
     void UpdateShaderParms()
     {
-        rayTraceMaterial.SetKeyword(debugVisShaderKeyword, visMode != VisMode.Default);
+        if (visMode != VisMode.Default)
+        {
+            rayTraceMaterial.EnableKeyword("DEBUG_VIS");
+        }
+        else
+        {
+            rayTraceMaterial.DisableKeyword("DEBUG_VIS");
+        }
         rayTraceMaterial.SetInt("visMode", (int)visMode);
-
         float debugVisScale = visMode switch
         {
             VisMode.TriangleTestCount => triTestVisScale,
@@ -254,7 +252,7 @@ public class RayTracingManager : MonoBehaviour
             _ => triTestVisScale
         };
         rayTraceMaterial.SetFloat("debugVisScale", debugVisScale);
-        rayTraceMaterial.SetInt("FrameCount", Time.frameCount);
+        rayTraceMaterial.SetInt("FrameCount", numAccumFrames);
         rayTraceMaterial.SetInt("MaxBounceCount", MaxBounceCount);
         rayTraceMaterial.SetInt("NumRaysPerPixel", NumRaysPerPixel);
         rayTraceMaterial.SetFloat("DefocusStrength", DefocusStrength);
@@ -356,8 +354,8 @@ public class RayTracingManager : MonoBehaviour
         {
             resultTexture.Release();
         }
-        Destroy(rayTraceMaterial);
-        Destroy(accumulateMaterial);
+        DestroyImmediate(rayTraceMaterial);
+        DestroyImmediate(accumulateMaterial);
     }
 
     void OnValidate()
