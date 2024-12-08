@@ -6,6 +6,7 @@ public struct EnviornmentSettings
     public Color SkyColorHorizon;
     public Color SkyColorZenith;
     public Vector3 SunLightDirection;
+    [Min(1)]
     public float SunFocus;
     [Min(0)]
     public float SunIntensity;

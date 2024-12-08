@@ -64,14 +64,11 @@
     <Analyzer Include="C:\Program Files\Unity\Hub\Editor\2022.3.4f1\Editor\Data\Tools\Unity.SourceGenerators\Unity.Properties.SourceGenerator.dll" />
   </ItemGroup>
   <ItemGroup>
-    <Compile Include="Assets\DataTypes\Sphere.cs" />
+    <Compile Include="Assets\DataTypes\Model.cs" />
     <Compile Include="Assets\DataTypes\Triangle.cs" />
-    <Compile Include="Assets\DataTypes\MeshChunk.cs" />
-    <Compile Include="Assets\DataTypes\Vertex.cs" />
     <Compile Include="Assets\RayTracingManager.cs" />
-    <Compile Include="Assets\RayTracingTypes\RayTracedSphere.cs" />
-    <Compile Include="Assets\RayTracingTypes\RayTracedMesh.cs" />
     <Compile Include="Assets\DataTypes\EnviornmentSettings.cs" />
+    <Compile Include="Assets\BVH.cs" />
     <Compile Include="Assets\DataTypes\MeshInfo.cs" />
     <Compile Include="Assets\DataTypes\RayTracingMaterial.cs" />
   </ItemGroup>
