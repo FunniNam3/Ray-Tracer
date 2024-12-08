@@ -46,7 +46,7 @@ Shader "RayTracingShader"
             float FocusDistance;                    // Distance of Focus plane
 
             // Enviornment Settings
-            int EnableEnviornment;
+            int UseSky;
 			float3 SunColor;
 			float SunFocus = 500;
 			float SunIntensity = 10;
@@ -163,7 +163,7 @@ Shader "RayTracingShader"
             // Get Light From Enviornment
             float3 GetEnvironmentLight(float3 dir)
 			{
-				if (EnableEnviornment == 0) return 0;
+				if (UseSky == 0) return 0;
 				const float3 GroundColor = float3(0.35, 0.3, 0.35);
 				const float3 SkyColorHorizon = float3(1, 1, 1);
 				const float3 SkyColorZenith = float3(0.08, 0.37, 0.73);

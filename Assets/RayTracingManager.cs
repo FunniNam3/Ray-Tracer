@@ -43,14 +43,12 @@ public class RayTracingManager : MonoBehaviour
 
     [Header("Info")]
     [SerializeField] int numAccumFrames;
-    [SerializeField] int numMeshChunks;
-    [SerializeField] int numTriangles;
 
 
     // Materials and renderTextures
-    Material rayTraceMaterial;
-    Material accumulateMaterial;
-    RenderTexture resultTexture;
+    public Material rayTraceMaterial;
+    public Material accumulateMaterial;
+    public RenderTexture resultTexture;
 
 
     // Buffers
@@ -149,6 +147,7 @@ public class RayTracingManager : MonoBehaviour
                 Graphics.Blit(src, dest); // Draw the unaltered camera render to the screen
             }
         }
+        resultTexture.Release();
     }
 
     void InitFrame()
@@ -161,8 +160,7 @@ public class RayTracingManager : MonoBehaviour
         }
         InitMaterial(accumulateShader, ref accumulateMaterial);
         resultTexture = CreateRenderTexture(Screen.width, Screen.height, FilterMode.Bilinear, GraphicsFormat.R32G32B32A32_SFloat, "Result");
-        models = FindObjectsOfType<Model>();
-
+        models = FindObjectsByType<Model>(0);
         if (!hasBVH)
         {
             var data = CreateAllMeshData(models);
@@ -176,10 +174,8 @@ public class RayTracingManager : MonoBehaviour
                 {
                     modelBuffer.Release();
                 }
-                modelBuffer ??= new ComputeBuffer(meshInfo.Length, meshInfoLen); // Create new buffer
+                modelBuffer = new ComputeBuffer(meshInfo.Length, meshInfoLen);
             }
-
-
 
             // Triangles buffer
             int triangleLen = System.Runtime.InteropServices.Marshal.SizeOf(typeof(Triangle));
@@ -195,7 +191,6 @@ public class RayTracingManager : MonoBehaviour
 
             rayTraceMaterial.SetBuffer("Triangles", triangleBuffer);
             rayTraceMaterial.SetInt("triangleCount", triangleBuffer.count);
-
 
             // Node buffer
             int nodeLen = System.Runtime.InteropServices.Marshal.SizeOf(typeof(BVH.Node));
@@ -265,6 +260,7 @@ public class RayTracingManager : MonoBehaviour
         rayTraceMaterial.SetFloat("DefocusStrength", DefocusStrength);
         rayTraceMaterial.SetFloat("DivergeStrength", DivergeStrength);
 
+        rayTraceMaterial.SetInt("UseSky", useSky ? 1 : 0);
         rayTraceMaterial.SetFloat("SunFocus", sunFocus);
         rayTraceMaterial.SetFloat("SunIntensity", sunIntensity);
         rayTraceMaterial.SetColor("SunColor", sunColor);
@@ -344,28 +340,30 @@ public class RayTracingManager : MonoBehaviour
 
     void OnDestroy()
     {
-        triangleBuffer?.Release();
-        nodeBuffer?.Release();
-        modelBuffer?.Release();
-        resultTexture?.Release();
-        DestroyImmediate(rayTraceMaterial);
-        DestroyImmediate(accumulateMaterial);
-    }
-
-
-    void OnApplicationQuit()
-    {
-        triangleBuffer?.Release();
-        nodeBuffer?.Release();
-        modelBuffer?.Release();
-        resultTexture?.Release();
-        DestroyImmediate(rayTraceMaterial);
-        DestroyImmediate(accumulateMaterial);
+        if (modelBuffer != null)
+        {
+            modelBuffer.Release(); // Release model buffer when object is destroyed
+        }
+        if (triangleBuffer != null)
+        {
+            triangleBuffer.Release();
+        }
+        if (nodeBuffer != null)
+        {
+            nodeBuffer.Release();
+        }
+        if (resultTexture != null)
+        {
+            resultTexture.Release();
+        }
+        Destroy(rayTraceMaterial);
+        Destroy(accumulateMaterial);
     }
 
     void OnValidate()
     {
     }
+
 
     struct MeshInfo
     {
