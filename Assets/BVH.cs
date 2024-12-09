@@ -48,7 +48,7 @@ public class BVH
 
     public void Split(int parentIndex, Vector3[] verts, int triGlobalStart, int triNum, int depth = 0)
     {
-        const int MaxDepth = 32;
+        const int MaxDepth = 64;
         Node parent = allNodes.Nodes[parentIndex];
         Vector3 size = parent.CalculateBoundsSize();
         float parentCost = NodeCost(size, triNum);

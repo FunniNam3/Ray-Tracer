@@ -196,7 +196,7 @@ Shader "RayTracingShader"
 
                 // init hit info
                 TriangleHitInfo hitInfo;
-                hitInfo.didHit = determinant >= 1E-6 && dst >= 0 && u >= 0 && v >= 0 && w >= 0;
+                hitInfo.didHit = determinant >= 1E-6 && dst >= -1E-6 && u >= -1E-6 && v >= -1E-6 && w >= -1E-6;
                 hitInfo.hitPoint = ray.origin + ray.dir * dst;
                 hitInfo.normal = normalize(tri.normalA * w + tri.normalB * u + tri.normalC * v);
                 hitInfo.dst = dst;
@@ -223,7 +223,7 @@ Shader "RayTracingShader"
                 result.dst = rayLength;
                 result.triIndex = -1;
 
-                int stack[32];
+                int stack[64];
                 int stackIndex = 0;
                 stack[stackIndex++] = nodeOffset + 0;
 

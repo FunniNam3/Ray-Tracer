@@ -132,7 +132,6 @@ public class RayTracingManager : MonoBehaviour
                 {
                     numAccumFrames = 0;
                     Graphics.Blit(null, dest, rayTraceMaterial);
-                    resultTexture.Release();
                 }
             }
             else
