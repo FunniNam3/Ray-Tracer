@@ -87,6 +87,8 @@ Shader "RayTracingShader"
                 float4 specularColor;
                 float specularProbability;
                 float smoothness;
+                float refractIndx;
+                float transparency;
             };
 
             struct Model
@@ -330,8 +332,33 @@ Shader "RayTracingShader"
 
                         rayOrigin = hitInfo.hitPoint;
                         float3 diffuseDir = normalize(hitInfo.normal + RandomDirection(rngState));
-                        float3 sepcularDir = reflect(rayDir, hitInfo.normal);
-                        rayDir = normalize(lerp(diffuseDir, sepcularDir, material.smoothness * isSpecularBounce));
+                        float3 specularDir = reflect(rayDir, hitInfo.normal);
+                        float cosT = min(dot(-rayDir, hitInfo.normal), 1.0f); // Cosine of the angle of incidence
+                        float sinT2 = 1.0f - cosT * cosT; // Sin^2(theta_t)
+                        float refractIndexRatio = 1.0003f / material.refractIndx;  // Inverse refractive index ratio (air to material)
+                        float3 refractDir;
+                        // Handle total internal reflection
+                        if (sinT2 * refractIndexRatio * refractIndexRatio > 1.0f)
+                        {
+                            refractDir = reflect(rayDir, hitInfo.normal);  // Total internal reflection
+                        }
+                        else
+                        {
+                            // Refraction into a denser medium, apply Snell's law
+                            refractDir = normalize(refract(rayDir, hitInfo.normal, refractIndexRatio));  // Compute refraction
+                        }
+
+                        if(material.transparency < RandomValue(rngState))
+                        {
+                            // Handle diffuse or specular reflection when no refraction occurs
+                            rayDir = normalize(lerp(diffuseDir, specularDir, material.smoothness * isSpecularBounce));
+                        }
+                        else
+                        {
+                            rayDir = refractDir;
+                            rayOrigin += refractDir * 1E-5;
+                        }
+
 
                         float3 emittedLight = material.emissionColor * material.emissionStrength;
                         incomingLight += emittedLight * rayColor;
@@ -361,6 +388,7 @@ Shader "RayTracingShader"
 				Ray ray;
 				ray.origin = rayOrigin;
 				ray.dir = rayDir;
+                uint rngState = 0;
 				ModelHitInfo hitInfo = CalculateRayCollision(ray, stats);
 
 				// Triangle test count vis

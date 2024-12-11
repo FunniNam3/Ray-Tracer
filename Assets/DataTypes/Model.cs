@@ -33,7 +33,6 @@ public class Model : MonoBehaviour
             meshRenderer.sharedMaterials = newMaterials;
         }
 
-
         RayTracingMaterial mat = material;
         bool displayEmissiveCol = mat.color.maxColorComponent < mat.emissionColor.maxColorComponent * mat.emissionStrength;
         Color displayCol = displayEmissiveCol ? mat.emissionColor * mat.emissionStrength : mat.color;
