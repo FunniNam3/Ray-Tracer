@@ -81,6 +81,8 @@ Shader "RayTracingShader"
 
             struct RayTracingMaterial
             {
+                int useTexture;
+                int textureIndex;
                 float4 color;
                 float4 emissionColor;
                 float emissionStrength;
@@ -308,6 +310,14 @@ Shader "RayTracingShader"
                 return x - y * floor(x / y);
             }
 
+            float reflectance(float cosine, float refraction_Index)
+            {
+                // Using Schlick's approximation for reflectance.
+                float r0 = (1 - refraction_Index) / (1 + refraction_Index);
+                r0 *= r0;
+                return r0 + (1 - r0) * pow((1 - cosine), 5);
+            }
+
             float3 Trace(float3 rayOrigin, float3 rayDir, inout uint rngState)
             {
                 float3 incomingLight = 0;
@@ -334,18 +344,18 @@ Shader "RayTracingShader"
                         float3 diffuseDir = normalize(hitInfo.normal + RandomDirection(rngState));
                         float3 specularDir = reflect(rayDir, hitInfo.normal);
                         float cosT = min(dot(-rayDir, hitInfo.normal), 1.0f); // Cosine of the angle of incidence
-                        float sinT2 = 1.0f - cosT * cosT; // Sin^2(theta_t)
-                        float refractIndexRatio = 1.0003f / material.refractIndx;  // Inverse refractive index ratio (air to material)
+                        float sinT = sqrt(1.0f - (cosT * cosT)); // Sin(theta_t)
                         float3 refractDir;
+                        float ri = 0 < dot(hitInfo.normal, rayDir) ? material.refractIndx : (1/material.refractIndx);
                         // Handle total internal reflection
-                        if (sinT2 * refractIndexRatio * refractIndexRatio > 1.0f)
+                        if (sinT * ri > 1.0f || reflectance(cosT, ri) > RandomValue(rngState))
                         {
                             refractDir = reflect(rayDir, hitInfo.normal);  // Total internal reflection
                         }
                         else
                         {
                             // Refraction into a denser medium, apply Snell's law
-                            refractDir = normalize(refract(rayDir, hitInfo.normal, refractIndexRatio));  // Compute refraction
+                            refractDir = normalize(refract(rayDir, hitInfo.normal, ri));  // Compute refraction
                         }
 
                         if(material.transparency < RandomValue(rngState))

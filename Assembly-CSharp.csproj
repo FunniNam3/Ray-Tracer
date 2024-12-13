@@ -67,6 +67,7 @@
   <ItemGroup>
     <Compile Include="Assets\DataTypes\Model.cs" />
     <Compile Include="Assets\DataTypes\Triangle.cs" />
+    <Compile Include="Assets\DataTypes\Textures.cs" />
     <Compile Include="Assets\DataTypes\EnviornmentSettings.cs" />
     <Compile Include="Assets\DataTypes\MeshInfo.cs" />
     <Compile Include="Assets\DataTypes\RayTracingMaterial.cs" />

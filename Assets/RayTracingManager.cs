@@ -89,7 +89,7 @@ public class RayTracingManager : MonoBehaviour
         {
             if (rayTracingEnabled && useSceneView)
             {
-                InitFrame();
+                InitFrame(src);
                 Graphics.Blit(null, dest, rayTraceMaterial);
             }
             else
@@ -102,7 +102,7 @@ public class RayTracingManager : MonoBehaviour
             Camera.current.cullingMask = rayTracingEnabled ? 0 : 2147483647;
             if (rayTracingEnabled && !useSceneView)
             {
-                InitFrame();
+                InitFrame(src);
 
                 if (Accumulate && visMode == VisMode.Default)
                 {
@@ -141,15 +141,15 @@ public class RayTracingManager : MonoBehaviour
         }
     }
 
-    void InitFrame()
+    void InitFrame(RenderTexture src = null)
     {
         // Create materials used in blits
         InitMaterial(rayTracingShader, ref rayTraceMaterial);
         InitMaterial(accumulateShader, ref accumulateMaterial);
-        if (resultTexture == null)
+        if (Accumulate && Application.isPlaying && resultTexture == null)
         {
-            resultTexture = CreateRenderTexture(Screen.width, Screen.height, FilterMode.Bilinear, GraphicsFormat.R32G32B32A32_SFloat, "Result");
-            resultTexture.Create();
+            // resultTexture = CreateRenderTexture(Screen.width, Screen.height, FilterMode.Bilinear, GraphicsFormat.R32G32B32A32_SFloat, "Result");
+            resultTexture = RenderTexture.GetTemporary(src.width, src.height, 0, GraphicsFormat.R32G32B32A32_SFloat);
         }
         models = FindObjectsByType<Model>(0);
         if (!hasBVH)
@@ -351,7 +351,8 @@ public class RayTracingManager : MonoBehaviour
         }
         if (resultTexture != null)
         {
-            resultTexture.Release();
+            // resultTexture.Release();
+            RenderTexture.ReleaseTemporary(resultTexture);
         }
         DestroyImmediate(rayTraceMaterial);
         DestroyImmediate(accumulateMaterial);
