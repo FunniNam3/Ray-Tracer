@@ -81,8 +81,6 @@ Shader "RayTracingShader"
 
             struct RayTracingMaterial
             {
-                int useTexture;
-                int textureIndex;
                 float4 color;
                 float4 emissionColor;
                 float emissionStrength;

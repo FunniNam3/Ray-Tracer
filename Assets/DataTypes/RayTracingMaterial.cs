@@ -3,8 +3,6 @@ using UnityEngine;
 [System.Serializable]
 public struct RayTracingMaterial
 {
-    [Range(0, 1)] public int UseTexture;
-    public int TextureIndex;
     public Color color;
     public Color emissionColor;
     public float emissionStrength;
