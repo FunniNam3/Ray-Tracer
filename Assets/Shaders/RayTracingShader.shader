@@ -81,6 +81,8 @@ Shader "RayTracingShader"
 
             struct RayTracingMaterial
             {
+                int useTexture;
+                int textureIndex;
                 float4 color;
                 float4 emissionColor;
                 float emissionStrength;
@@ -117,12 +119,22 @@ Shader "RayTracingShader"
                 RayTracingMaterial material;
             };
 
+            struct Light
+            {
+                float4 emissionColor;
+                float emissionStrength;
+                float3 modelPosition;
+                int modelIndex;
+            };
+
             // Buffers
             StructuredBuffer<Model> ModelInfo;
             StructuredBuffer<Triangle> Triangles;
             StructuredBuffer<BVHNode> Nodes;
+            StructuredBuffer<Light> Lights;
             int triangleCount;
             int modelCount;
+            int lightCount;
 
             // RNG Functions
 
@@ -303,6 +315,39 @@ Shader "RayTracingShader"
                 return result;
             }
 
+            ModelHitInfo CalculateLightCollision(Ray worldRay, int modelIndex)
+            {
+                ModelHitInfo result;
+                result.dst = 1.#INF;
+                Ray localRay;
+                int2 stats;
+                
+                for(int i = 0; i < modelCount; i++)
+                {
+                    if(modelIndex == i)
+                    {
+                        continue;
+                    }
+                    Model model = ModelInfo[i];
+                    localRay.origin = mul(model.worldToLocalMatrix, float4(worldRay.origin, 1));
+                    localRay.dir = mul(model.worldToLocalMatrix, float4(worldRay.dir, 0));
+                    localRay.invDir = 1 / localRay.dir;
+
+                    TriangleHitInfo hit = RayTriangleBVH(localRay, result.dst, model.nodeOffset, model.triOffset, stats);
+
+                    if(hit.dst < result.dst)
+                    {
+                        result.didHit = true;
+                        result.dst = hit.dst;
+                        result.normal = normalize(mul(model.localToWorldMatrix, float4(hit.normal, 0)));
+                        result.hitPoint = worldRay.origin + worldRay.dir * hit.dst;
+                        result.material = model.material;
+                    }
+                }
+
+                return result;
+            }
+
             float2 mod2(float2 x, float2 y)
             {
                 return x - y * floor(x / y);
@@ -311,9 +356,22 @@ Shader "RayTracingShader"
             float reflectance(float cosine, float refraction_Index)
             {
                 // Using Schlick's approximation for reflectance.
-                float r0 = (1 - refraction_Index) / (1 + refraction_Index);
-                r0 *= r0;
+                float r0 = pow((1 - refraction_Index) / (1 + refraction_Index), 2);
                 return r0 + (1 - r0) * pow((1 - cosine), 5);
+            }
+
+            float3 SampleLightSource(inout uint rngState, out float pdf, out int Index)
+            {
+                int lightIndex = (int)(RandomValue(rngState) * lightCount);
+                Index = Lights[lightIndex].modelIndex;
+                Model model = ModelInfo[Index];
+                BVHNode node = Nodes[model.nodeOffset];
+                
+                float3 center = mul(model.localToWorldMatrix, float4((node.boundsMax + node.boundsMin)/2,1));
+
+                pdf = 1.0 / lightCount;
+
+                return center;
             }
 
             float3 Trace(float3 rayOrigin, float3 rayDir, inout uint rngState)
@@ -336,48 +394,80 @@ Shader "RayTracingShader"
                         dstSum += hitInfo.dst;
                         RayTracingMaterial material = hitInfo.material;
 
-                        bool isSpecularBounce = material.specularProbability >= RandomValue(rngState);
-
-                        rayOrigin = hitInfo.hitPoint;
-                        float3 diffuseDir = normalize(hitInfo.normal + RandomDirection(rngState));
-                        float3 specularDir = reflect(rayDir, hitInfo.normal);
-                        float cosT = min(dot(-rayDir, hitInfo.normal), 1.0f); // Cosine of the angle of incidence
-                        float sinT = sqrt(1.0f - (cosT * cosT)); // Sin(theta_t)
-                        float3 refractDir;
-                        float ri = 0 < dot(hitInfo.normal, rayDir) ? material.refractIndx : (1/material.refractIndx);
-                        // Handle total internal reflection
-                        if (sinT * ri > 1.0f || reflectance(cosT, ri) > RandomValue(rngState))
+                        if (RandomValue(rngState) < 1) 
                         {
-                            refractDir = reflect(rayDir, hitInfo.normal);  // Total internal reflection
+                            // Sample light source
+                            int modelIndex;
+                            float lightPdf;
+                            float3 lightPos = SampleLightSource(rngState, lightPdf, modelIndex);
+                            float3 lightDir = normalize(lightPos - hitInfo.hitPoint);
+                            float lightDist = length(lightPos - hitInfo.hitPoint);
+                        
+                            // Shadow ray
+                            Ray shadowRay;
+                            shadowRay.origin = hitInfo.hitPoint + lightDir * 1e-4;  // Offset to prevent self-intersection
+                            shadowRay.dir = lightDir;
+                            ModelHitInfo shadowHit = CalculateLightCollision(shadowRay, modelIndex);
+                        
+                            if (!shadowHit.didHit || shadowHit.dst > lightDist) 
+                            {
+                                // Calculate light contribution
+                                float3 lightEmission = ModelInfo[modelIndex].material.emissionColor * ModelInfo[modelIndex].material.emissionStrength;
+                                float3 materialDiffuse = material.color;
+                                float cosineTerm = max(dot(hitInfo.normal, lightDir), 0);  // Ensure non-negative
+                                float attenuation = ModelInfo[modelIndex].material.emissionStrength / (lightDist * lightDist);
+                        
+                                // Add to incoming light
+                                incomingLight += (lightEmission * attenuation * materialDiffuse * cosineTerm * rayColor);
+
+                                break;
+                            }
+                            
                         }
                         else
                         {
-                            // Refraction into a denser medium, apply Snell's law
-                            refractDir = normalize(refract(rayDir, hitInfo.normal, ri));  // Compute refraction
-                        }
+                            bool isSpecularBounce = material.specularProbability >= RandomValue(rngState);
 
-                        if(material.transparency < RandomValue(rngState))
-                        {
-                            // Handle diffuse or specular reflection when no refraction occurs
-                            rayDir = normalize(lerp(diffuseDir, specularDir, material.smoothness * isSpecularBounce));
-                        }
-                        else
-                        {
-                            rayDir = refractDir;
-                            rayOrigin += refractDir * 1E-5;
-                        }
+                            rayOrigin = hitInfo.hitPoint;
+                            float3 diffuseDir = normalize(hitInfo.normal + RandomDirection(rngState));
+                            float3 specularDir = reflect(rayDir, hitInfo.normal);
+                            float cosT = min(dot(-rayDir, hitInfo.normal), 1.0f); // Cosine of the angle of incidence
+                            float sinT = sqrt(1.0f - (cosT * cosT)); // Sin(theta_t)
+                            float3 refractDir;
+                            float ri = 0 < dot(hitInfo.normal, rayDir) ? material.refractIndx : (1/material.refractIndx);
+                            // Handle total internal reflection
+                            if (sinT * ri > 1.0f || reflectance(cosT, ri) > RandomValue(rngState))
+                            {
+                                refractDir = reflect(rayDir, hitInfo.normal);  // Total internal reflection
+                            }
+                            else
+                            {
+                                // Refraction into a denser medium, apply Snell's law
+                                refractDir = normalize(refract(rayDir, hitInfo.normal, ri));  // Compute refraction
+                            }
 
+                            if(material.transparency < RandomValue(rngState))
+                            {
+                                // Handle diffuse or specular reflection when no refraction occurs
+                                rayDir = normalize(lerp(diffuseDir, specularDir, material.smoothness * isSpecularBounce));
+                            }
+                            else
+                            {
+                                rayDir = refractDir;
+                                rayOrigin += refractDir * 1E-5;
+                            }
 
-                        float3 emittedLight = material.emissionColor * material.emissionStrength;
-                        incomingLight += emittedLight * rayColor;
-                        rayColor *= lerp(material.color, material.specularColor, isSpecularBounce);
+                            float3 emittedLight = material.emissionColor * material.emissionStrength;
+                            incomingLight += emittedLight * rayColor;
+                            rayColor *= lerp(material.color, material.specularColor, isSpecularBounce);
 
-                        float p = max(rayColor.r, max(rayColor.g, rayColor.b));
-                        if(RandomValue(rngState) >= p)
-                        {
-                            break;
-                        }
-                        rayColor *= 1.0 / p;
+                            float p = max(rayColor.r, max(rayColor.g, rayColor.b));
+                            if(RandomValue(rngState) >= p)
+                            {
+                                break;
+                            }
+                            rayColor *= 1.0 / p;
+                            }
                     }
                     else
                     {
@@ -425,6 +515,13 @@ Shader "RayTracingShader"
 
 				return float3(1, 0, 1); // Invalid test mode
 			}
+
+            float3 CombineTracers(float3 directLight, float pdfLight, float3 indirectLight, float pdfIndirect)
+            {
+                float wLight = pdfLight / (pdfLight + pdfIndirect);
+                float wIndirect = pdfIndirect / (pdfLight + pdfIndirect);
+                return wLight * directLight + wIndirect * indirectLight;
+            }
 
             float4 frag (v2f i) : SV_Target
             {

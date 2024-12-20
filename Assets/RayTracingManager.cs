@@ -2,6 +2,7 @@ using UnityEngine;
 using UnityEngine.Rendering;
 using System.Collections.Generic;
 using UnityEngine.Experimental.Rendering;
+using Unity.VisualScripting;
 
 [ExecuteAlways, ImageEffectAllowedInSceneView]
 public class RayTracingManager : MonoBehaviour
@@ -54,15 +55,21 @@ public class RayTracingManager : MonoBehaviour
     ComputeBuffer triangleBuffer;
     ComputeBuffer nodeBuffer;
     ComputeBuffer modelBuffer;
+    ComputeBuffer lightBuffer;
 
     MeshInfo[] meshInfo;
     Model[] models;
     public bool hasBVH;
+    public bool hasTextureArray;
+    public Texture2D[] textures;
+    Texture2DArray textureArray;
+    List<LightInfo> lights = new();
 
     void OnEnable()
     {
         numAccumFrames = 0;
         hasBVH = false;
+        hasTextureArray = false;
     }
 
     private void Update()
@@ -157,6 +164,7 @@ public class RayTracingManager : MonoBehaviour
             var data = CreateAllMeshData(models);
             hasBVH = true;
 
+            // Mesh Info buffer
             meshInfo = data.meshInfo.ToArray();
             int meshInfoLen = System.Runtime.InteropServices.Marshal.SizeOf(typeof(MeshInfo));
             if (modelBuffer == null || !modelBuffer.IsValid() || modelBuffer.count != meshInfo.Length || modelBuffer.stride != meshInfoLen)
@@ -197,8 +205,27 @@ public class RayTracingManager : MonoBehaviour
 
             rayTraceMaterial.SetBuffer("Nodes", nodeBuffer);
 
+            // Lights buffer
+            int lightLen = System.Runtime.InteropServices.Marshal.SizeOf(typeof(LightInfo));
+            if (lightBuffer == null || !lightBuffer.IsValid() || lightBuffer.count != lights.Count || lightBuffer.stride != lightLen)
+            {
+                if (lightBuffer != null)
+                {
+                    lightBuffer.Release();
+                }
+                lightBuffer = new ComputeBuffer(lights.Count, lightLen);
+            }
+            lightBuffer.SetData(lights);
+
+            rayTraceMaterial.SetBuffer("Lights", lightBuffer);
+            rayTraceMaterial.SetInt("lightCount", lights.Count);
+
         }
         UpdateModels();
+        if (!hasTextureArray && textures.Length > 0)
+        {
+            InitTextureArray();
+        }
         // Update data
         UpdateCameraParms(Camera.current);
         UpdateShaderParms();
@@ -230,6 +257,35 @@ public class RayTracingManager : MonoBehaviour
 
             mat = new Material(shader);
         }
+    }
+
+    void InitTextureArray()
+    {
+        hasTextureArray = true;
+        int width = 0;
+        int height = 0;
+        for (int i = 0; i < textures.Length; i++)
+        {
+            width = Mathf.Max(width, textures[i].width);
+            height = Mathf.Max(height, textures[i].height);
+        }
+
+        textureArray = new Texture2DArray(width, height, textures.Length, TextureFormat.RGBA32, false);
+        Color[] colors = new Color[width * height];
+        for (int slice = 0; slice < textures.Length; slice++)
+        {
+            for (int y = 0; y < height; y++)
+            {
+                for (int x = 0; x < width; x++)
+                {
+                    colors[y * width + x] = textures[slice].GetPixel(x, y);
+                }
+            }
+            textureArray.SetPixels(colors, slice);
+        }
+        textureArray.Apply();
+
+        rayTraceMaterial.SetTexture("textures", textureArray);
     }
 
     void UpdateShaderParms()
@@ -315,6 +371,18 @@ public class RayTracingManager : MonoBehaviour
                 allData.nodes.AddRange(bvh.GetNodes());
             }
 
+            if (model.material.emissionStrength > 0 && (model.material.emissionColor != new Color(0, 0, 0, 0) || model.material.emissionColor != Color.black))
+            {
+                LightInfo modelLight = new LightInfo
+                {
+                    emissionColor = model.material.emissionColor,
+                    emissionStrength = model.material.emissionStrength,
+                    modelPosition = model.transform.position,
+                    modelIndex = allData.meshInfo.Count
+                };
+                lights.Add(modelLight);
+            }
+
             allData.meshInfo.Add(new MeshInfo()
             {
                 NodeOffset = meshLookup[model.Mesh].nodeOffset,
@@ -348,6 +416,10 @@ public class RayTracingManager : MonoBehaviour
         if (nodeBuffer != null)
         {
             nodeBuffer.Release();
+        }
+        if (lightBuffer != null)
+        {
+            lightBuffer.Release();
         }
         if (resultTexture != null)
         {
