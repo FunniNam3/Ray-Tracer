@@ -394,7 +394,7 @@ Shader "RayTracingShader"
                         dstSum += hitInfo.dst;
                         RayTracingMaterial material = hitInfo.material;
 
-                        if (RandomValue(rngState) < 1) 
+                        if (RandomValue(rngState) * MaxBounceCount < bounceIndex) 
                         {
                             // Sample light source
                             int modelIndex;
@@ -416,9 +416,10 @@ Shader "RayTracingShader"
                                 float3 materialDiffuse = material.color;
                                 float cosineTerm = max(dot(hitInfo.normal, lightDir), 0);  // Ensure non-negative
                                 float attenuation = ModelInfo[modelIndex].material.emissionStrength / (lightDist * lightDist);
-                        
+
+                                float p = max(rayColor.r, max(rayColor.g, rayColor.b));
                                 // Add to incoming light
-                                incomingLight += (lightEmission * attenuation * materialDiffuse * cosineTerm * rayColor);
+                                incomingLight += (lightEmission * attenuation * materialDiffuse * cosineTerm * rayColor) / lightPdf / p;
 
                                 break;
                             }
@@ -464,6 +465,31 @@ Shader "RayTracingShader"
                             float p = max(rayColor.r, max(rayColor.g, rayColor.b));
                             if(RandomValue(rngState) >= p)
                             {
+                                // Sample light source
+                                int modelIndex;
+                                float lightPdf;
+                                float3 lightPos = SampleLightSource(rngState, lightPdf, modelIndex);
+                                float3 lightDir = normalize(lightPos - hitInfo.hitPoint);
+                                float lightDist = length(lightPos - hitInfo.hitPoint);
+                            
+                                // Shadow ray
+                                Ray shadowRay;
+                                shadowRay.origin = hitInfo.hitPoint + lightDir * 1e-4;  // Offset to prevent self-intersection
+                                shadowRay.dir = lightDir;
+                                ModelHitInfo shadowHit = CalculateLightCollision(shadowRay, modelIndex);
+                            
+                                if (!shadowHit.didHit || shadowHit.dst > lightDist) 
+                                {
+                                    // Calculate light contribution
+                                    float3 lightEmission = ModelInfo[modelIndex].material.emissionColor * ModelInfo[modelIndex].material.emissionStrength;
+                                    float3 materialDiffuse = material.color;
+                                    float cosineTerm = max(dot(hitInfo.normal, lightDir), 0);  // Ensure non-negative
+                                    float attenuation = ModelInfo[modelIndex].material.emissionStrength / (lightDist * lightDist);
+                            
+                                    // Add to incoming light
+                                    incomingLight += (lightEmission * attenuation * materialDiffuse * cosineTerm * rayColor) / lightPdf * p;
+
+                                }
                                 break;
                             }
                             rayColor *= 1.0 / p;
