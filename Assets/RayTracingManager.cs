@@ -219,7 +219,6 @@ public class RayTracingManager : MonoBehaviour
 
             rayTraceMaterial.SetBuffer("Lights", lightBuffer);
             rayTraceMaterial.SetInt("lightCount", lights.Count);
-
         }
         UpdateModels();
         if (!hasTextureArray && textures.Length > 0)
@@ -365,7 +364,7 @@ public class RayTracingManager : MonoBehaviour
             {
                 meshLookup.Add(model.Mesh, (allData.nodes.Count, allData.triangles.Count));
 
-                BVH bvh = new(model.Mesh.vertices, model.Mesh.triangles, model.Mesh.normals);
+                BVH bvh = new(model.Mesh.vertices, model.Mesh.triangles, model.Mesh.normals, model.Mesh.uv);
 
                 allData.triangles.AddRange(bvh.GetTriangles());
                 allData.nodes.AddRange(bvh.GetNodes());

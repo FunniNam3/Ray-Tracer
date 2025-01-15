@@ -11,7 +11,7 @@ public class BVH
     public Triangle[] GetTriangles() => allTris;
     readonly BVHTriangle[] AllTriangles;
 
-    public BVH(Vector3[] verts, int[] indices, Vector3[] normals)
+    public BVH(Vector3[] verts, int[] indices, Vector3[] normals, Vector2[] uvs)
     {
         allNodes = new();
         AllTriangles = new BVHTriangle[indices.Length / 3];
@@ -42,7 +42,20 @@ public class BVH
             Vector3 norm_a = normals[indices[buildTri.Index]];
             Vector3 norm_b = normals[indices[buildTri.Index + 1]];
             Vector3 norm_c = normals[indices[buildTri.Index + 2]];
-            allTris[i] = new Triangle(a, b, c, norm_a, norm_b, norm_c);
+            Vector2 uvA, uvB, uvC;
+            if (uvs.Length > 0)
+            {
+                uvA = uvs[indices[buildTri.Index]];
+                uvB = uvs[indices[buildTri.Index + 1]];
+                uvC = uvs[indices[buildTri.Index + 2]];
+            }
+            else
+            {
+                uvA = Vector2.zero;
+                uvB = Vector2.zero;
+                uvC = Vector2.zero;
+            }
+            allTris[i] = new Triangle(a, b, c, norm_a, norm_b, norm_c, uvA, uvB, uvC);
         }
     }
 
