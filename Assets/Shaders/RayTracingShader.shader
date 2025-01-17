@@ -460,13 +460,14 @@ Shader "RayTracingShader"
                                 }
                                 else
                                 {
-                                    materialDiffuse = 0;
+                                    materialDiffuse = UNITY_SAMPLE_TEX2DARRAY(textures, float3(hitInfo.uv, material.textureIndex));
                                 }
                                 float cosineTerm = max(dot(hitInfo.normal, lightDir), 0);  // Ensure non-negative
                                 float attenuation = ModelInfo[modelIndex].material.emissionStrength / (lightDist * lightDist);
                         
                                 // Add to incoming light
                                 incomingLight += (lightEmission * attenuation * materialDiffuse * cosineTerm * rayColor) / lightPdf * p;
+                                incomingLight += material.emissionColor * material.emissionStrength * rayColor;
                             }
                             break;
                         }

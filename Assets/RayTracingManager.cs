@@ -221,10 +221,7 @@ public class RayTracingManager : MonoBehaviour
             rayTraceMaterial.SetInt("lightCount", lights.Count);
         }
         UpdateModels();
-        if (!hasTextureArray && textures.Length > 0)
-        {
-            InitTextureArray();
-        }
+
         // Update data
         UpdateCameraParms(Camera.current);
         UpdateShaderParms();
@@ -351,6 +348,10 @@ public class RayTracingManager : MonoBehaviour
         modelBuffer.SetData(meshInfo);
         rayTraceMaterial.SetBuffer("ModelInfo", modelBuffer);
         rayTraceMaterial.SetInt("modelCount", models.Length);
+        if (!hasTextureArray && textures.Length > 0)
+        {
+            InitTextureArray();
+        }
     }
 
     MeshDataLists CreateAllMeshData(Model[] models)
