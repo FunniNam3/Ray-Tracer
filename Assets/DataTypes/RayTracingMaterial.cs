@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using UnityEngine;
 
 [System.Serializable]
@@ -5,6 +6,7 @@ public struct RayTracingMaterial
 {
     [Range(0, 1)] public int useTexture;
     public int textureIndex;
+    [DefaultValue(-1)] public int normalIndex;
     public Color color;
     public Color emissionColor;
     public float emissionStrength;

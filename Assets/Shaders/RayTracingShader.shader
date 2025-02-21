@@ -3,7 +3,6 @@ Shader "RayTracingShader"
     SubShader
     {
         Cull Off ZWrite Off ZTest Always
-
         Pass
         {
             CGPROGRAM
@@ -85,6 +84,7 @@ Shader "RayTracingShader"
             {
                 int useTexture;
                 int textureIndex;
+                int normalIndex;
                 float4 color;
                 float4 emissionColor;
                 float emissionStrength;
@@ -140,6 +140,7 @@ Shader "RayTracingShader"
             int lightCount;
 
             UNITY_DECLARE_TEX2DARRAY(textures);
+            UNITY_DECLARE_TEX2DARRAY(normals);
 
             // RNG Functions
 
@@ -196,30 +197,81 @@ Shader "RayTracingShader"
 				return composite;
 			}
 
-            TriangleHitInfo RayTriangle(Ray ray, Triangle tri)
-            {
+            void ComputeTangentBitangent(
+                const float3 p0, const float3 p1, const float3 p2, 
+                const float2 uv0, const float2 uv1, const float2 uv2, 
+                inout float3 tangent, inout float3 bitangent
+            ) {
+                // Edges of the triangle in model space
+                float3 edge1 = p1 - p0;
+                float3 edge2 = p2 - p0;
+            
+                // Edges of the triangle in UV space
+                float2 deltaUV1 = uv1 - uv0;
+                float2 deltaUV2 = uv2 - uv0;
+            
+                // Compute the determinant
+                float f = 1.0f / (deltaUV1.x * deltaUV2.y - deltaUV2.x * deltaUV1.y);
+            
+                // Calculate tangent and bitangent
+                tangent = normalize(f * (deltaUV2.y * edge1 - deltaUV1.y * edge2));
+                bitangent = normalize(f * (-deltaUV2.x * edge1 + deltaUV1.x * edge2));
+            }
+            
+            float3 SampleNormalMap(float2 uv, int normalIndex) {
+                float3 color = UNITY_SAMPLE_TEX2DARRAY(normals, float3(uv, normalIndex)); // Returns [0, 1]
+                return color * 2.0f - 1.0f; // Map to [-1, 1]
+            }
+            
+
+            TriangleHitInfo RayTriangle(Ray ray, Triangle tri, int normalIndex) {
                 float3 edgeAB = tri.posB - tri.posA;
                 float3 edgeAC = tri.posC - tri.posA;
                 float3 normalVector = cross(edgeAB, edgeAC);
                 float3 ao = ray.origin - tri.posA;
                 float3 dao = cross(ao, ray.dir);
-
+            
                 float determinant = -dot(ray.dir, normalVector);
                 float invDet = 1 / determinant;
-
+            
                 // Calculate dst to Triangle and barycentric coordinates of intersection point
                 float dst = dot(ao, normalVector) * invDet;
                 float u = dot(edgeAC, dao) * invDet;
                 float v = -dot(edgeAB, dao) * invDet;
                 float w = 1 - u - v;
-
-                // init hit info
+            
+                // Initialize hit info
                 TriangleHitInfo hitInfo;
                 hitInfo.didHit = determinant >= 1E-6 && dst >= -1E-6 && u >= -1E-6 && v >= -1E-6 && w >= -1E-6;
+                if (!hitInfo.didHit) return hitInfo;
+            
                 hitInfo.hitPoint = ray.origin + ray.dir * dst;
-                hitInfo.normal = normalize(tri.normalA * w + tri.normalB * u + tri.normalC * v);
-                hitInfo.uv = tri.uvA * w + tri.uvB * u + tri.uvC * v;
                 hitInfo.dst = dst;
+            
+                float3 worldNormal = normalize(tri.normalA * w + tri.normalB * u + tri.normalC * v);
+                float2 interpolatedUV = tri.uvA * w + tri.uvB * u + tri.uvC * v;
+
+                if(normalIndex > -1)
+                {
+                    // Compute tangents dynamically
+                    float3 tangent, bitangent;
+                    ComputeTangentBitangent(tri.posA, tri.posB, tri.posC, tri.uvA, tri.uvB, tri.uvC, tangent, bitangent);
+
+                    // Orthogonalize tangent and bitangent
+                    tangent = normalize(tangent - dot(tangent, worldNormal) * worldNormal);
+                    bitangent = cross(worldNormal, tangent);
+
+                    // Sample the normal map (tangent-space normal)
+                    float3 tangentNormal = SampleNormalMap(interpolatedUV, normalIndex); // [-1, 1] range
+
+                    // Transform tangent-space normal to world space using TBN matrix
+                    float3x3 TBN = float3x3(tangent, bitangent, worldNormal);
+                    worldNormal = normalize(mul(TBN, tangentNormal)); // Apply transformation
+                }
+
+                hitInfo.normal = worldNormal;
+                hitInfo.uv = interpolatedUV;
+            
                 return hitInfo;
             }
 
@@ -237,7 +289,7 @@ Shader "RayTracingShader"
                 return dst;
             }
 
-            TriangleHitInfo RayTriangleBVH(inout Ray ray, float rayLength, int nodeOffset, int triOffset, inout int2 stats)
+            TriangleHitInfo RayTriangleBVH(inout Ray ray, float rayLength, int nodeOffset, int triOffset, int normalIndex, inout int2 stats)
             {
                 TriangleHitInfo result;
                 result.dst = rayLength;
@@ -247,6 +299,7 @@ Shader "RayTracingShader"
                 int stackIndex = 0;
                 stack[stackIndex++] = nodeOffset + 0;
 
+                [loop]
                 while (stackIndex > 0)
                 {
                     BVHNode node = Nodes[stack[--stackIndex]];
@@ -254,10 +307,11 @@ Shader "RayTracingShader"
 
                     if(isLeaf)
                     {
+                        [loop]
                         for(int i = 0; i < node.triangleCount; i++)
                         {
                             Triangle tri = Triangles[triOffset + node.startIndex + i];
-                            TriangleHitInfo triHitInfo = RayTriangle(ray, tri);
+                            TriangleHitInfo triHitInfo = RayTriangle(ray, tri, normalIndex);
                             stats[0]++;
 
                             if (triHitInfo.didHit && triHitInfo.dst < result.dst)
@@ -299,6 +353,7 @@ Shader "RayTracingShader"
                 result.dst = 1.#INF;
                 Ray localRay;
                 
+                [loop]
                 for(int i = 0; i < modelCount; i++)
                 {
                     Model model = ModelInfo[i];
@@ -306,7 +361,7 @@ Shader "RayTracingShader"
                     localRay.dir = mul(model.worldToLocalMatrix, float4(worldRay.dir, 0));
                     localRay.invDir = 1 / localRay.dir;
 
-                    TriangleHitInfo hit = RayTriangleBVH(localRay, result.dst, model.nodeOffset, model.triOffset, stats);
+                    TriangleHitInfo hit = RayTriangleBVH(localRay, result.dst, model.nodeOffset, model.triOffset, model.material.normalIndex, stats);
 
                     if(hit.dst < result.dst)
                     {
@@ -329,6 +384,7 @@ Shader "RayTracingShader"
                 Ray localRay;
                 int2 stats;
                 
+                [loop]
                 for(int i = 0; i < modelCount; i++)
                 {
                     if(modelIndex == i)
@@ -340,7 +396,7 @@ Shader "RayTracingShader"
                     localRay.dir = mul(model.worldToLocalMatrix, float4(worldRay.dir, 0));
                     localRay.invDir = 1 / localRay.dir;
 
-                    TriangleHitInfo hit = RayTriangleBVH(localRay, result.dst, model.nodeOffset, model.triOffset, stats);
+                    TriangleHitInfo hit = RayTriangleBVH(localRay, result.dst, model.nodeOffset, model.triOffset, model.material.normalIndex, stats);
 
                     if(hit.dst < result.dst)
                     {
@@ -381,7 +437,7 @@ Shader "RayTracingShader"
                 return center;
             }
 
-            float3 Trace(float3 rayOrigin, float3 rayDir, inout uint rngState)
+            float3 Trace(float3 rayOrigin, float3 rayDir, inout uint rngState, inout bool hitObj)
             {
                 float3 incomingLight = 0;
                 float3 rayColor = 1;
@@ -399,6 +455,7 @@ Shader "RayTracingShader"
 
                     if(hitInfo.didHit)
                     {
+                        hitObj = true;
                         dstSum += hitInfo.dst;
                         RayTracingMaterial material = hitInfo.material;
                         
@@ -488,6 +545,7 @@ Shader "RayTracingShader"
                     }
                     else
                     {
+                        hitObj = false;
                         incomingLight += GetEnvironmentLight(rayDir) * rayColor;
                         break;
                     }
@@ -559,9 +617,11 @@ Shader "RayTracingShader"
                     return float4(TraceDebugMode(_WorldSpaceCameraPos, normalize(focusPoint - _WorldSpaceCameraPos)), 1);
                 #endif
                 
+                bool hitObj;
                 // Calculate pixel color
                 float3 totalIncomingLight = 0;
 
+                [loop]
                 for (int rayIndex = 0; rayIndex < NumRaysPerPixel; rayIndex++)
                 {
                     float2 defocusJitter = RandomPointInCircle(rngState) * DefocusStrength / numPixels.x;
@@ -571,14 +631,18 @@ Shader "RayTracingShader"
                     float3 jitteredViewPoint = focusPoint + camRight * jitter.x + camUp * jitter.y;
                     float3 rayDir = normalize(jitteredViewPoint - _WorldSpaceCameraPos);
 
-                    totalIncomingLight += Trace(rayOrigin, rayDir, rngState);
+                    totalIncomingLight += Trace(rayOrigin, rayDir, rngState, hitObj);
+                    if(!hitObj)
+                    {
+                        totalIncomingLight += GetEnvironmentLight(rayDir);
+                        break;
+                    }
                 }
 
                 // Store view parameters as a color output (adjust based on needs)
                 float3 pixelCol = totalIncomingLight / NumRaysPerPixel;
                 return float4(pixelCol, 1);
             }
-            
             ENDCG
         }
     }

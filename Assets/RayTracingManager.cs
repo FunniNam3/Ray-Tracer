@@ -61,8 +61,11 @@ public class RayTracingManager : MonoBehaviour
     Model[] models;
     public bool hasBVH;
     public bool hasTextureArray;
+    public bool hasNormalArray;
     public Texture2D[] textures;
+    public Texture2D[] normals;
     Texture2DArray textureArray;
+    Texture2DArray normalArray;
     List<LightInfo> lights = new();
 
     void OnEnable()
@@ -227,21 +230,6 @@ public class RayTracingManager : MonoBehaviour
         UpdateShaderParms();
     }
 
-    RenderTexture CreateRenderTexture(int width, int height, FilterMode filterMode, GraphicsFormat format, string name = "Unnamed", int depthMode = 0, bool useMipMaps = false)
-    {
-        RenderTexture texture = new RenderTexture(width, height, depthMode);
-        texture.graphicsFormat = format;
-        texture.enableRandomWrite = true;
-        texture.autoGenerateMips = false;
-        texture.useMipMap = useMipMaps;
-        texture.Create();
-
-        texture.name = name;
-        texture.wrapMode = TextureWrapMode.Clamp;
-        texture.filterMode = filterMode;
-        return texture;
-    }
-
     void InitMaterial(Shader shader, ref Material mat)
     {
         if (mat == null || (mat.shader != shader && shader != null))
@@ -282,6 +270,35 @@ public class RayTracingManager : MonoBehaviour
         textureArray.Apply();
 
         rayTraceMaterial.SetTexture("textures", textureArray);
+    }
+
+    void InitNormalArray()
+    {
+        hasNormalArray = true;
+        int width = 0;
+        int height = 0;
+        for (int i = 0; i < normals.Length; i++)
+        {
+            width = Mathf.Max(width, normals[i].width);
+            height = Mathf.Max(height, normals[i].height);
+        }
+
+        normalArray = new Texture2DArray(width, height, normals.Length, TextureFormat.RGBA32, false);
+        Color[] colors = new Color[width * height];
+        for (int slice = 0; slice < normals.Length; slice++)
+        {
+            for (int y = 0; y < height; y++)
+            {
+                for (int x = 0; x < width; x++)
+                {
+                    colors[y * width + x] = normals[slice].GetPixel(x, y);
+                }
+            }
+            normalArray.SetPixels(colors, slice);
+        }
+        normalArray.Apply();
+
+        rayTraceMaterial.SetTexture("normals", normalArray);
     }
 
     void UpdateShaderParms()
@@ -351,6 +368,10 @@ public class RayTracingManager : MonoBehaviour
         if (!hasTextureArray && textures.Length > 0)
         {
             InitTextureArray();
+        }
+        if (!hasNormalArray && normals.Length > 0)
+        {
+            InitNormalArray();
         }
     }
 
